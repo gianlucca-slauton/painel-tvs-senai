@@ -364,6 +364,9 @@ async function refreshControl(id) {
       <div class="qrrow"><img src="${d.qr}" alt="QR Code do link desta TV">
         <p class="sub">O QR serve para testar no celular: aponte a câmera e a mesma tela abre lá.</p></div>
       <button class="btn ghost-danger" id="c-regen">${ic('rotate')} Gerar um link novo (o antigo para de funcionar)</button>
+
+
+      
     </section>`;
 
   // ações
