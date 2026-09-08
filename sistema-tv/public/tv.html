@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mural — TV</title>
+<link rel="stylesheet" href="/tv.css?v=2">
+
+<link rel="shortcut icon" href="./icons/faviconV2.png" type="image/x-icon">
+
+</head>
+<body>
+<div id="root">
+  <div id="stage">
+    <div class="layer" id="layerA"></div>
+    <div class="layer" id="layerB"></div>
+  </div>
+  <div id="barwrap"><div id="bar"></div></div>
+  <div id="hud"><span id="hud-left"></span><span id="clock"></span></div>
+  <div id="offline">Sem internet — exibindo o conteúdo salvo</div>
+  <div id="idle" class="hidden"><div>
+    <div class="idle-badge"><img src="/icons/senai.svg" alt=""></div>
+    <h1 id="idle-titulo">Sem programação agora</h1>
+    <p id="idle-texto">No painel do Mural, escolha uma playlist e toque em "Exibir agora".<br>Esta tela se atualiza sozinha.</p>
+  </div></div>
+  <div id="start">
+    <div class="start-badge"><img src="/icons/senai.svg" alt=""></div>
+    <h1 id="start-name"></h1>
+    <button id="start-btn" autofocus>Toque para iniciar</button>
+    <p class="start-hint">A tela entra em modo cheio e começa a exibir a programação.</p>
+  </div>
+  <button id="fs" class="hidden">Tela cheia</button>
+</div>
+<div id="fatal" class="hidden"><div><h1>Link inválido</h1>
+  <p>Este link de TV não existe mais ou foi renovado.<br>Peça um novo link para quem administra o Mural.</p></div></div>
+<script src="/tv.js?v=2"></script>
+</body>
+</html>

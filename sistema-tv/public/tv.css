@@ -1,0 +1,155 @@
+/* ============================================================
+   Mural — player das TVs
+   Paleta: vermelho, branco, preto, azul escuro.
+   Compatível com navegadores antigos de Smart TV.
+   ============================================================ */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: #000; color: #fff; overflow: hidden;
+  font-family: 'Archivo', 'Segoe UI', Arial, Helvetica, sans-serif;
+  -webkit-user-select: none; user-select: none; cursor: none;
+}
+.hidden { display: none !important; }
+
+#root { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+body.vert #root {
+  width: 100vh; height: 100vw;
+  -webkit-transform: rotate(90deg) translateY(-100%);
+          transform: rotate(90deg) translateY(-100%);
+  -webkit-transform-origin: top left;
+          transform-origin: top left;
+}
+
+/* camadas com crossfade */
+#stage { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; }
+.layer {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  opacity: 0; -webkit-transition: opacity .7s ease; transition: opacity .7s ease;
+}
+.layer.show { opacity: 1; z-index: 2; }
+.layer img, .layer video {
+  width: 100%; height: 100%; display: block; background: #000; object-fit: contain;
+}
+
+/* aviso de texto em tela cheia */
+.notice {
+  width: 100%; height: 100%;
+  display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center;
+  padding: 7vw;
+}
+.notice-in h1 {
+  font-size: 80px; font-size: 7vw; line-height: 1.05;
+  margin: 0 0 .35em; font-weight: bold; letter-spacing: -.02em;
+}
+.notice-in p {
+  font-size: 34px; font-size: 2.8vw; line-height: 1.3; margin: 0; white-space: pre-wrap;
+}
+.notice-in.light { color: #fff; }
+.notice-in.dark  { color: #141414; }
+
+/* barra de progresso */
+#barwrap {
+  position: absolute; left: 0; right: 0; bottom: 44px; height: 4px;
+  background: rgba(255,255,255,.15); z-index: 5;
+  -webkit-transition: opacity .6s ease; transition: opacity .6s ease;
+}
+#bar { height: 100%; width: 0; background: #C8102E; }  /* vermelho — "no ar" */
+/* Para a barra de progresso sumir junto com o HUD, descomente a linha abaixo: */
+ body.hud-off #barwrap { opacity: 0; } 
+
+/* HUD (nome da TV, playlist e hora) — some com fade após inatividade */
+#hud {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 44px;
+  display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: space-between; justify-content: space-between;
+  padding: 0 20px; background: rgba(0,0,0,.55);
+  font-size: 16px; font-weight: bold; z-index: 5;
+  opacity: 1;
+  -webkit-transition: opacity .6s ease; transition: opacity .6s ease;
+}
+body.hud-off #hud { opacity: 0; }
+
+#offline {
+  position: absolute; top: 0; right: 0; z-index: 6;
+  background: #C8102E; color: #fff; font-size: 13px; font-weight: bold;
+  padding: 5px 12px; display: none;
+}
+body.off #offline { display: block; }
+
+/* tela "sem programação" */
+#idle {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: #101010; text-align: center; z-index: 4;
+  display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: center; justify-content: center;
+}
+#idle h1 { font-size: 44px; font-size: 4.5vw; margin: 18px 0 10px; font-weight: bold; }
+#idle p { font-size: 20px; font-size: 1.9vw; color: #c9c9c9; line-height: 1.5; margin: 0; }
+.idle-badge {
+  width: 64px; height: 64px; margin: 0 auto 6px; background: #C8102E; color: #fff;
+  border-radius: 14px; line-height: 64px; font-size: 34px; font-weight: bold;
+}
+
+/* overlay inicial (o toque libera o modo tela cheia) */
+#start {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: #0C0C0C; z-index: 10; text-align: center; padding: 24px;
+  display: -webkit-flex; display: flex;
+  -webkit-flex-direction: column; flex-direction: column;
+  -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: center; justify-content: center;
+}
+.start-badge {
+  width: 76px; height: 76px; background: #C8102E; color: #fff; border-radius: 18px;
+  line-height: 76px; font-size: 42px; font-weight: bold; margin-bottom: 20px;
+}
+#start h1 { font-size: 54px; font-size: 5vw; margin: 0 0 26px; font-weight: bold; }
+#start-btn {
+  font-family: 'Archivo', 'Segoe UI', Arial, sans-serif;
+  font-size: 24px; font-weight: bold; color: #fff; background: #C8102E;
+  border: 2px solid #8E0E22; border-radius: 16px; padding: 24px 54px; cursor: pointer;
+}
+.start-hint { color: #9b9b9b; margin-top: 18px; font-size: 16px; }
+#fs {
+  position: absolute; bottom: 58px; right: 16px; z-index: 9;
+  font-family: 'Archivo', Arial, sans-serif; font-size: 15px; font-weight: bold;
+  color: #fff; background: #C8102E; border: none; border-radius: 10px;
+  padding: 10px 16px; cursor: pointer;
+}
+
+.start-badge img,.idle-badge img{width:70%;height:70%;object-fit:contain;display:block}
+
+/* link inválido */
+#fatal {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: #000; color: #fff; text-align: center; z-index: 20;
+  display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: center; justify-content: center;
+  padding: 24px;
+}
+
+/* ---------- badge com LOGO em vez da letra "M" ---------- */
+/* Quando o badge contém uma imagem, ele vira uma moldura invisível:
+   sem fundo vermelho, sem cantos, imagem centralizada. */
+.start-badge, .idle-badge {
+  width: auto; height: auto;
+  background: none;
+  border-radius: 0;
+  line-height: normal;
+  display: -webkit-flex; display: flex;
+  -webkit-align-items: center; align-items: center;
+  -webkit-justify-content: center; justify-content: center;
+}
+.start-badge img, .idle-badge img {
+  display: block;
+  width: 200px;          /* ajuste aqui a largura do logo na tela de início */
+  height: auto;
+  max-height: 150px;
+  object-fit: contain;
+}
+.idle-badge { margin: 0 auto 6px; }
