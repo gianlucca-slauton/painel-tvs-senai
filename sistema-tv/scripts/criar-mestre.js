@@ -1,7 +1,7 @@
 // ============================================================
 // criar-mestre.js — cria o primeiro usuário mestre.
-// Roda pelo terminal:  npm run criar-mestre
-// A senha não aparece na tela enquanto você digita (é proposital).
+// Roda pelo arquivo CRIAR-USUARIO-MESTRE.bat (ou: npm run criar-mestre)
+// A senha não aparece: cada tecla vira um ponto "•" na tela.
 // ============================================================
 const crypto = require('crypto');
 const readline = require('readline');
@@ -14,12 +14,51 @@ if (!process.stdin.isTTY) {
   process.exit(1);
 }
 
-// Uma ÚNICA linha de comando para todas as perguntas. É ela quem controla
-// o teclado; usar dois métodos diferentes ao mesmo tempo causava travamento.
+// Caractere exibido para cada letra digitada da senha. Troque aqui se
+// quiser outro símbolo (ex.: '*' ou '·').
+const MASCARA_SENHA = '•';
+
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
+// ---------- modo "senha" ----------
+const escreverDeVerdade = process.stdout.write.bind(process.stdout);
+let ocultando = false;   // true enquanto uma senha está sendo digitada
+let perguntaAtual = '';  // texto da pergunta (ex.: "Senha (mínimo 4 caracteres): ")
+let teclas = 0;          // quantos • desenhar
+
+// Enquanto a senha está sendo digitada, engolimos o que o readline
+// tenta escrever (era assim que ele mostraria os caracteres reais).
+// Quem desenha somos nós, com pontinhos.
+rl.output.write = function (chunk, encoding, cb) {
+  if (ocultando) return true;
+  return escreverDeVerdade(chunk, encoding, cb);
+};
+
+// Redesenha a linha da senha: volta ao início, apaga e escreve
+// pergunta + um • para cada caractere já digitado.
+function desenharSenha() {
+  const temCursor = typeof process.stdout.cursorTo === 'function';
+  if (temCursor) {
+    ocultando = false;                    // deixa os comandos de cursor passarem
+    process.stdout.cursorTo(0);
+    process.stdout.clearLine(0);
+    escreverDeVerdade(perguntaAtual + MASCARA_SENHA.repeat(teclas));
+    ocultando = true;
+  } else {
+    escreverDeVerdade('\r\x1b[K' + perguntaAtual + MASCARA_SENHA.repeat(teclas));
+  }
+}
+
+// A cada tecla na senha, atualiza a contagem e redesenha.
+// O valor verdadeiro fica guardado dentro do próprio readline —
+// aqui nós só cuidamos do desenho.
+rl.input.on('keypress', () => {
+  if (!ocultando) return;
+  teclas = rl.line.length;
+  desenharSenha();
+});
+
 rl.on('SIGINT', () => {          // Ctrl+C em qualquer momento
-  ocultando = false;             // garante que a próxima mensagem apareça
   console.log('\nCancelado. Nada foi criado.');
   process.exit(1);
 });
@@ -27,23 +66,19 @@ rl.on('SIGINT', () => {          // Ctrl+C em qualquer momento
 // Pergunta normal (o que é digitado aparece na tela).
 const perguntar = (texto) => new Promise(r => rl.question(texto, resp => r(resp.trim())));
 
-// Senha oculta: a linha de comando escreve na tela cada tecla pressionada.
-// Desligamos essa escrita só durante esta pergunta — o que for digitado
-// não aparece, mas funciona normalmente (inclusive apagar com backspace).
-const escreverDeVerdade = process.stdout.write.bind(process.stdout);
-let ocultando = false;
-rl.output.write = function (chunk, encoding, cb) {
-  return ocultando ? true : escreverDeVerdade(chunk, encoding, cb);
-};
+// Senha mascarada: cada caractere vira um • na tela.
 function perguntarOculto(texto) {
   return new Promise(resolve => {
-    escreverDeVerdade(texto);
+    perguntaAtual = texto;
+    teclas = 0;
     ocultando = true;
-    rl.question('', resposta => {
+    rl.question(texto, resposta => {
       ocultando = false;
+      rl.history = []; rl.historyIndex = -1;  // seta ↑ não revela a senha depois
       escreverDeVerdade('\n');
       resolve(resposta.trim());
     });
+    desenharSenha();  // já mostra a pergunta com zero pontinhos
   });
 }
 
