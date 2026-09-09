@@ -220,6 +220,54 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--vermelho);outlin
   object-fit:contain;
 }
 
+/* ---------- rodapé ---------- */
+#rodape{padding:26px 20px 40px;text-align:center;color:var(--tinta2);font-size:13px}
+#rodape p{margin:3px 0}
+
+/* ---------- prévias do seletor "Adicionar mídia" ---------- */
+/* As prévias não tinham tamanho definido: a imagem renderizava no
+   tamanho original e estourava a grade. Agora ficam num quadro fixo,
+   do mesmo jeito que nas outras telas. */
+.pick{min-width:0}
+.pick > img,
+.pick > video{
+  display:block;
+  width:100%;
+  height:120px;          /* altura do quadradinho da prévia */
+  object-fit:cover;      /* preenche o quadro cortando o excesso (nada distorce) */
+  border-radius:8px;
+  background:#111;
+}
+/* prévia de aviso de texto: mesma altura dos demais, para a grade ficar uniforme */
+.pick > .thumb-mini{width:100% !important;height:120px !important;font-size:13px}
+
+/* ---------- nomes longos nunca saem dos cartões ---------- */
+/* Nomes de arquivo viram "palavras" gigantes sem espaços; sem isso
+   elas empurram e transbordam o cartão. */
+.dev-card, .lib-card, .pick, .modal,
+.pl-list li > div, .fila-list li > div { min-width: 0; }
+.dev-card h3, .onair strong, .lib-body strong, .pick span,
+.pl-list li strong, .fila-list li strong, .it-info strong,
+.live-body strong, .modal h3 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* "No ar:" no card da TV — no máximo 2 linhas, com reticências */
+.onair strong {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- botão Sair: longe da navegação ---------- */
+/* Desktop: canto direito, após o relógio, com divisória vertical.
+   Estilo "apagado" (fundo transparente) para não parecer item de menu. */
+.sair-area{display:inline-flex;margin-left:18px;padding-left:18px;border-left:2px solid rgba(255,255,255,.25)}
+#topbar #logout{background:none;border-color:rgba(255,255,255,.55);color:var(--papel);box-shadow:none}
+#topbar #logout:hover{background:rgba(255,255,255,.14)}
+
+
 
 /* ---------- responsivo ---------- */
 @media (max-width:760px){
@@ -231,4 +279,32 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--vermelho);outlin
   .btn{width:100%}
   .row .btn,.dev-menu .btn,.dev-menu .link-btn{width:auto}
   .live-body{gap:16px}
+  .it-list li{ flex-wrap:wrap; row-gap:10px; }
+  .it-list li .thumb{ width:64px; height:44px; }
+  .it-list li .thumb-mini{ width:64px !important; height:44px !important; font-size:9px; }
+  .it-list li .it-info{ flex:1 1 120px; min-width:0; }
+  .it-list li .dur{ margin-left:auto; }   /* duração e ações vão p/ canto direito da 2ª linha */
+  .it-list li .dur input{ width:72px; min-height:40px; }
+  .it-list li .ibtn{ width:42px; height:42px; }
+
+  /* cabeçalho do editor: a fileira de botões ocupa a largura toda sem estourar */
+  .ed-head .row{ width:100%; }
+
+  /* topo: "Sair" não precisa ocupar a linha inteira */
+  #topbar .btn{ width:auto; }
+
+  /* segurança: se algo ainda transbordar, corta em vez de rolar a página */
+  .page{ overflow-x:clip; }
+
+   #topbar{flex-direction:column;align-items:stretch;gap:12px;padding:14px}
+  #topbar .brand{justify-content:flex-start}
+  #topbar nav{flex:none;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #topbar nav a{justify-content:flex-start}
+  #topbar #logout{width:100%;justify-content:center}
+
+   /* Celular: vira a ÚLTIMA linha do topo, atravessando as 2 colunas,
+     com faixa separadora e folga acima — longe dos links */
+  .sair-area{grid-column:1/-1;margin:10px 0 0;padding:16px 0 0;border-left:none;border-top:2px solid rgba(255,255,255,.25)}
+  #topbar #logout{width:100%;justify-content:center}
 }
+

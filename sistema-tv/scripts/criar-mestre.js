@@ -111,7 +111,7 @@ function hashPassword(pw) {
   const mestres = db.prepare("SELECT COUNT(*) AS n FROM users WHERE role='master'").get().n;
   if (mestres > 0) console.log('\nAviso: já existe um usuário mestre. Este será criado mesmo assim.');
 
-  db.prepare("INSERT INTO users (name, login, pass_hash, role) VALUES (?,?,?, 'master')")
+    db.prepare("INSERT INTO users (name, login, pass_hash, role, owner) VALUES (?,?,?, 'master', 1)")
     .run(nome, login, hashPassword(senha));
 
   escreverDeVerdade(`\nPronto! Usuário mestre "${login}" criado.\n`);

@@ -138,15 +138,18 @@ function renderShell() {
   $('#topbar').innerHTML = `
     <a class="brand" href="#/tvs"><span class="brand-badge"><img src="./icons/senai.svg" alt=""></span>
       <span class="brand-txt">Painel<small>TVs SENAI</small></span></a>
-    <nav>
+        <nav>
       <a href="#/tvs" data-nav="tvs">${ic('tv',18)} Minhas TVs</a>
       <a href="#/playlists" data-nav="playlists">${ic('folder',18)} Playlists</a>
       <a href="#/biblioteca" data-nav="biblioteca">${ic('image',18)} Biblioteca</a>
       ${u.role === 'master' ? `<a href="#/admins" data-nav="admins">${ic('users',18)} Administradores</a>` : ''}
       <span class="clock" id="clock"></span>
-      <button id="logout" class="btn small">${ic('logout',18)} Sair</button>
+      <span class="sair-area"><button id="logout" class="btn small">${ic('logout',18)} Sair</button></span>
     </nav>`;
-  $('#logout').onclick = async () => { await api('POST', '/api/logout'); state.user = null; showLogin(); };
+    $('#logout').onclick = async () => {
+    if (!(await confirmar('Sair do painel', 'Para voltar, será preciso digitar login e senha de novo. Sair mesmo assim?', 'Sair'))) return;
+    await api('POST', '/api/logout'); state.user = null; showLogin();
+  };
   if (!clockTimer) clockTimer = setInterval(() => {
     const el = $('#clock'); if (!el) return;
     el.textContent = new Date().toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' })
@@ -207,7 +210,18 @@ async function viewDevices() {
 }
 async function refreshDevices() {
   let data;
-  try { data = await api('GET', '/api/status'); } catch { return; }
+  try { data = await api('GET', '/api/status'); }
+  catch (e) {
+    const box = $('#dev-list');
+    // só substitui a tela por erro se ainda não há lista visível
+    if (box && !box.querySelector('.dev-card')) {
+      box.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:40px">
+        <h3>Não consegui buscar as TVs</h3>
+        <p class="sub" style="margin:6px auto 16px">${esc(e.message)}</p>
+        <button class="btn primary" onclick="location.reload()">Tentar de novo</button></div>`;
+    }
+    return;
+  }
   const box = $('#dev-list'); if (!box) return;
   if (!data.devices.length) {
     box.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:46px">
@@ -215,6 +229,8 @@ async function refreshDevices() {
       <p class="sub" style="margin:6px auto 16px">Toque em <strong>Nova TV</strong> aí em cima para começar.</p></div>`;
     return;
   }
+  // ... daqui para baixo, EXATAMENTE como já está no seu arquivo
+  // (o box.innerHTML = data.devices.map(...) e os manipuladores de clique)
   box.innerHTML = data.devices.map(d => `
     <article class="card dev-card" style="margin:0">
       <div class="dev-top"><span class="tag">${esc(d.location || 'Sem local')}</span>
@@ -361,8 +377,10 @@ async function refreshControl(id) {
         <input type="text" readonly value="${esc(d.link)}" onclick="this.select()">
         <button class="btn" id="c-copy">${ic('copy')} Copiar</button>
       </div>
-      <div class="qrrow"><img src="${d.qr}" alt="QR Code do link desta TV">
-        <p class="sub">O QR serve para testar no celular: aponte a câmera e a mesma tela abre lá.</p></div>
+            <p class="sub" style="margin-top:4px">No navegador da TV, basta digitar:
+        <strong style="font-size:18px">${esc(d.host_hint)}</strong><br>
+        <span class="muted small">Pode digitar com ou sem os traços; maiúsculas e minúsculas não importam.</span></p>
+      <br>
       <button class="btn ghost-danger" id="c-regen">${ic('rotate')} Gerar um link novo (o antigo para de funcionar)</button>
 
 
@@ -578,18 +596,36 @@ async function viewEditor(id) {
     try { await api('PUT', `/api/playlists/${id}`, { name: e.target.value }); toast('Nome salvo'); }
     catch (err) { toast(err.message, 'err'); }
   });
-  // adicionar mídias (modal com a biblioteca)
+    // adicionar mídias (modal com a biblioteca)
   $('#pl-add').onclick = () => {
-    let added = 0;
     const ov = openModal(`<h3>Adicionar mídia</h3>
-      <p class="sub">Toque nos itens para juntar na playlist. Depois feche.</p>
+      <p class="sub">Toque nos itens para formar uma playlist. Se não houver nenhum item, adicione-o(s) primeiro pela biblioteca.</p>
+      <div id="aviso-repetir" class="aviso-off hidden" style="margin-bottom:12px"></div>
       <div class="pick-grid">${lib.map(m => `
-        <button class="pick" data-id="${m.id}">${thumb(m)}<span>${esc(m.name)}</span></button>`).join('')}</div>
+        <button class="pick ${items.some(it => it.media_id === m.id) ? 'picked' : ''}" data-id="${m.id}">${thumb(m)}<span>${esc(m.name)}</span></button>`).join('')}</div>
       <div class="row end" style="margin-top:14px"><button class="btn primary" id="pick-done">Concluir</button></div>`);
+    const aviso = ov.querySelector('#aviso-repetir');
     $$('.pick', ov).forEach(b => b.onclick = () => {
       const m = lib.find(x => x.id == b.dataset.id);
-      items.push({ media_id: m.id, duration_seconds: null, media: m, uid: 'u' + uidSeq++ });
-      persist(); renderItens(); b.classList.add('picked'); added++;
+      const adicionar = () => {
+        items.push({ media_id: m.id, duration_seconds: null, media: m, uid: 'u' + uidSeq++ });
+        persist(); renderItens();
+        b.classList.add('picked');
+      };
+      if (items.some(it => it.media_id === m.id)) {
+        // já está na playlist: pergunta antes de repetir (sem fechar a janela)
+        aviso.classList.remove('hidden');
+        aviso.innerHTML = `<strong>"${esc(m.name)}"</strong> já está na playlist. Deseja repetir essa mídia?
+          <div class="row" style="margin-top:10px">
+            <button class="btn small" id="rep-nao">Não, deixar como está</button>
+            <button class="btn primary small" id="rep-sim">${ic('plus',17)} Sim, adicionar de novo</button>
+          </div>`;
+        aviso.querySelector('#rep-sim').onclick = () => { adicionar(); aviso.classList.add('hidden'); };
+        aviso.querySelector('#rep-nao').onclick = () => aviso.classList.add('hidden');
+      } else {
+        aviso.classList.add('hidden');
+        adicionar();
+      }
     });
     ov.querySelector('#pick-done').onclick = closeModal;
   };
@@ -783,38 +819,92 @@ async function viewUsers() {
   setActiveNav('admins');
   app.innerHTML = `<div class="page">
     <div class="page-head"><div><h1>Administradores</h1>
-      <p class="sub">Pessoas que podem cadastrar TVs, playlists e mídias.</p></div></div>
-    <section class="card"><h3>Criar novo administrador</h3>
+      <p class="sub">Pessoas com acesso ao painel. Mestres também criam e removem acessos.</p></div></div>
+    <section class="card"><h3>Criar novo acesso</h3>
+      <div class="row">
+        <label class="field" style="flex:1;min-width:220px;margin:0"><span>Nome</span>
+          <input type="text" id="u-nome" autocomplete="off"></label>
+        <label class="field" style="flex:1;min-width:160px;margin:0"><span>Login</span>
+          <input type="text" id="u-login" autocomplete="off"></label>
+        <label class="field" style="min-width:230px;margin:0"><span>Papel</span>
+          <select id="u-papel">
+            <option value="admin">Administrador — TVs, playlists e mídias</option>
+            <option value="master">Mestre — tudo isso + gerencia acessos</option>
+          </select></label>
+      </div>
       <div class="row" style="align-items:flex-end">
-        <label class="field" style="flex:1;min-width:180px;margin:0"><span>Nome</span><input type="text" id="u-nome"></label>
-        <label class="field" style="flex:1;min-width:140px;margin:0"><span>Login</span><input type="text" id="u-login"></label>
-        <label class="field" style="flex:1;min-width:140px;margin:0"><span>Senha</span><input type="text" id="u-senha"></label>
+        <label class="field" style="flex:1;min-width:160px;margin:0"><span>Senha</span>
+          <input type="password" id="u-senha" autocomplete="new-password"></label>
+        <label class="field" style="flex:1;min-width:160px;margin:0"><span>Repita a senha</span>
+          <input type="password" id="u-senha2" autocomplete="new-password"></label>
         <button class="btn primary" id="u-ok">${ic('plus')} Criar</button>
       </div></section>
     <div id="u-list"><div class="loading">Carregando…</div></div></div>`;
   $('#u-ok').onclick = async () => {
+    const nome = $('#u-nome').value.trim();
+    const login = $('#u-login').value.trim().toLowerCase();
+    const senha = $('#u-senha').value;
+    const senha2 = $('#u-senha2').value;
+    if (!nome) { toast('Escreva o nome da pessoa.', 'err'); return; }
+    if (!/^[a-z0-9._-]{3,}$/.test(login)) { toast('Login: 3+ caracteres, sem espaços nem acentos.', 'err'); return; }
+    if (senha.length < 4) { toast('A senha precisa de 4+ caracteres.', 'err'); return; }
+    if (senha !== senha2) { toast('As senhas não conferem. Confira os dois campos.', 'err'); $('#u-senha2').focus(); return; }
     try {
-      await api('POST', '/api/users', { name: $('#u-nome').value, login: $('#u-login').value, senha: $('#u-senha').value });
-      toast('Administrador criado'); refreshUsers();
-      $('#u-nome').value = $('#u-login').value = $('#u-senha').value = '';
+      await api('POST', '/api/users', { name: nome, login, senha, role: $('#u-papel').value });
+      toast($('#u-papel').value === 'master' ? 'Mestre criado' : 'Administrador criado');
+      refreshUsers();
+      $('#u-nome').value = $('#u-login').value = $('#u-senha').value = $('#u-senha2').value = '';
     } catch (e) { toast(e.message, 'err'); }
   };
   await refreshUsers();
 }
+
 async function refreshUsers() {
   let data; try { data = await api('GET', '/api/users'); } catch (e) { toast(e.message, 'err'); return; }
   const box = $('#u-list'); if (!box) return;
-  box.innerHTML = `<ul class="pl-rows">${data.users.map(u => `
-    <li><div><h3>${esc(u.name)} ${u.role === 'master' ? '<span class="tag">Mestre</span>' : ''}</h3>
+  box.innerHTML = `<ul class="pl-rows">${data.users.map(u => {
+    const souEu = u.id === state.user.id;
+    const dono = u.owner === 1;
+    const tag = dono ? '<span class="tag">Mestre fundador</span>'
+              : u.role === 'master' ? '<span class="tag">Mestre</span>'
+              : '<span class="tag cinza">Administrador</span>';
+    let acoes;
+    if (souEu) {
+      acoes = '<span class="muted small">você</span>';
+    } else if (dono) {
+      acoes = '<span class="muted small">conta protegida</span>';
+    } else {
+      acoes = `<button class="link-btn" data-papel="${u.id}" data-novo="${u.role === 'master' ? 'admin' : 'master'}" data-nome="${esc(u.name)}">
+          ${ic('users',17)} ${u.role === 'master' ? 'Voltar a administrador' : 'Tornar mestre'}</button>
+        <button class="link-btn danger" data-del="${u.id}" data-nome="${esc(u.name)}" data-role="${u.role}">${ic('trash',17)} Remover</button>`;
+    }
+    return `<li><div><h3>${esc(u.name)} ${tag}</h3>
       <span class="muted small">login: ${esc(u.login)}</span></div>
-      ${u.role === 'admin' ? `<button class="link-btn danger" data-del="${u.id}" data-nome="${esc(u.name)}">${ic('trash',17)} Remover</button>` : ''}</li>`).join('')}</ul>`;
+      <div class="row">${acoes}</div></li>`;
+  }).join('')}</ul>`;
+  $$('[data-papel]', box).forEach(b => b.onclick = async () => {
+    const vaiSerMestre = b.dataset.novo === 'master';
+    const ok = await confirmar(
+      vaiSerMestre ? 'Tornar mestre' : 'Voltar a administrador',
+      vaiSerMestre
+        ? `"${b.dataset.nome}" vai poder criar e remover acessos — inclusive outros mestres. Confirma?`
+        : `"${b.dataset.nome}" deixa de gerenciar acessos e volta a cuidar só de TVs, playlists e mídias. Confirma?`,
+      'Mudar papel');
+    if (!ok) return;
+    try { await api('POST', `/api/users/${b.dataset.papel}/role`, { role: b.dataset.novo }); toast('Papel alterado'); refreshUsers(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
   $$('[data-del]', box).forEach(b => b.onclick = async () => {
-    if (await confirmar('Remover administrador', `"${b.dataset.nome}" perde o acesso ao painel. Confirma?`)) {
+    const aviso = b.dataset.role === 'master'
+      ? `"${b.dataset.nome}" é MESTRE e perde o acesso ao painel na hora. Confirma?`
+      : `"${b.dataset.nome}" perde o acesso ao painel. Confirma?`;
+    if (await confirmar('Remover acesso', aviso, 'Remover')) {
       try { await api('DELETE', `/api/users/${b.dataset.del}`); toast('Removido'); refreshUsers(); }
       catch (e) { toast(e.message, 'err'); }
     }
   });
 }
+
 
 // ---------- roteador simples (por hash) ----------
 const rotas = [

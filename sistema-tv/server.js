@@ -107,23 +107,49 @@ app.get('/api/me', (req, res) => {
 app.get('/api/users', requireMaster, (req, res) => {
   res.json({ users: db.prepare('SELECT id,name,login,role,created_at FROM users ORDER BY name').all() });
 });
+// Criar usuário: escolha entre Administrador e Mestre.
 app.post('/api/users', requireMaster, (req, res) => {
   const nome = String(req.body?.name || '').trim();
   const login = String(req.body?.login || '').trim().toLowerCase();
   const senha = String(req.body?.senha || '');
+  const papel = req.body?.role === 'master' ? 'master' : 'admin';
   if (!nome) return bad(res, 'Escreva o nome da pessoa.');
   if (!/^[a-z0-9._-]{3,}$/.test(login)) return bad(res, 'Login: 3+ caracteres, sem espaços nem acentos.');
   if (senha.length < 4) return bad(res, 'A senha precisa de 4+ caracteres.');
   if (db.prepare('SELECT id FROM users WHERE login=?').get(login)) return bad(res, 'Esse login já existe.');
-  const info = db.prepare("INSERT INTO users (name,login,pass_hash,role) VALUES (?,?,?, 'admin')")
-    .run(nome, login, hashPassword(senha));
+  const info = db.prepare('INSERT INTO users (name,login,pass_hash,role) VALUES (?,?,?,?)')
+    .run(nome, login, hashPassword(senha), papel);
   res.json({ user: db.prepare('SELECT id,name,login,role FROM users WHERE id=?').get(info.lastInsertRowid) });
 });
+
+// Promover a mestre ou voltar a administrador.
+app.post('/api/users/:id/role', requireMaster, (req, res) => {
+  const alvo = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
+  if (!alvo) return bad(res, 'Usuário não encontrado.', 404);
+  if (alvo.id === req.user.id) return bad(res, 'Você não pode mudar o seu próprio papel.');
+
+    if (alvo.owner === 1) return bad(res, 'O mestre fundador não pode ser rebaixado.');
+  const papel = req.body?.role === 'master' ? 'master' : 'admin';
+  if (alvo.role === 'master' && papel === 'admin') {
+    const mestres = db.prepare("SELECT COUNT(*) n FROM users WHERE role='master'").get().n;
+    if (mestres <= 1) return bad(res, 'Este é o único mestre. Crie outro mestre antes de mudar este.');
+  }
+  db.prepare('UPDATE users SET role=? WHERE id=?').run(papel, alvo.id);
+  res.json({ ok: true });
+});
+
+// Remover usuário — nunca você mesmo, nunca o último mestre.
 app.delete('/api/users/:id', requireMaster, (req, res) => {
   const alvo = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
   if (!alvo) return bad(res, 'Usuário não encontrado.', 404);
-  if (alvo.role !== 'admin') return bad(res, 'Só administradores podem ser removidos.');
   if (alvo.id === req.user.id) return bad(res, 'Você não pode remover a si mesmo.');
+
+    if (alvo.owner === 1) return bad(res, 'O mestre fundador não pode ser removido.');
+    
+  if (alvo.role === 'master') {
+    const mestres = db.prepare("SELECT COUNT(*) n FROM users WHERE role='master'").get().n;
+    if (mestres <= 1) return bad(res, 'Este é o único mestre. Crie outro mestre antes de removê-lo.');
+  }
   db.prepare('DELETE FROM users WHERE id=?').run(alvo.id);
   res.json({ ok: true });
 });
@@ -150,7 +176,7 @@ function listPlaylists() {
          FROM playlist_items pi JOIN media m ON m.id = pi.media_id WHERE pi.playlist_id = p.id) AS seconds,
       (SELECT COUNT(*) FROM playlist_items pi JOIN media m ON m.id = pi.media_id
          WHERE pi.playlist_id = p.id AND m.kind = 'video') AS video_count
-    FROM playlists p ORDER BY p.name COLLATE NOCASE`).all();
+    FROM playlists p WHERE p.hidden = 0 ORDER BY p.name COLLATE NOCASE`).all();
 }
 // Playlist no formato que a TV consome (duração já resolvida por item).
 function playlistFull(id) {
@@ -170,22 +196,20 @@ function playlistFull(id) {
     }))
   };
 }
-function sendCommand(deviceId, action) {
-  db.prepare('INSERT INTO device_commands (device_id, action) VALUES (?,?)').run(deviceId, action);
-}
+
 // ---------- códigos curtos de TV ----------
 // Alfabeto minúsculo sem caracteres ambíguos (sem 0/O, 1/I/L, 5/S).
-// 8 caracteres = ~850 bilhões de combinações: seguro na rede local
+// 6 caracteres = ~1 bilhão de combinações — folgado para rede local
 // e simples de digitar caractere por caractere no controle da TV.
 const ALFABETO_CODIGO = '23456789abcdefghjkmnpqrstuvwxyz';
-function gerarTokenTV(n = 8) {
+function gerarTokenTV(n = 6) {
   const bytes = crypto.randomBytes(n);
   let s = '';
   for (let i = 0; i < n; i++) s += ALFABETO_CODIGO[bytes[i] % ALFABETO_CODIGO.length];
   return s;
 }
-// Procura a TV aceitando maiúsculas/minúsculas e ignorando traços,
-// espaços e "http://" que a pessoa possa ter digitado junto.
+// Acha a TV aceitando maiúsculas/minúsculas e ignorando traços,
+// espaços ou "http://" que a pessoa possa ter digitado junto.
 function acharTVporToken(bruto) {
   const limpo = String(bruto || '').toLowerCase().replace(/[^0-9a-z]/g, '');
   if (limpo) {
@@ -194,10 +218,13 @@ function acharTVporToken(bruto) {
   }
   return db.prepare('SELECT * FROM devices WHERE token=? COLLATE NOCASE').get(String(bruto || '')) || null;
 }
-// Formata o token em grupos de 4, só para leitura (ex.: h4k2-m7xq).
-function fmtToken(t) { return String(t).replace(/(.{4})/g, '$1-').replace(/-$/, ''); }
+// Só para leitura no painel: agrupa em blocos de 3 (ex.: h4k-m7x).
+function fmtToken(t) { return String(t).replace(/(.{3})/g, '$1-').replace(/-$/, ''); }
 
-const ONLINE_MS = 20000; // TV sem sinal por 40s = offline no painel
+function sendCommand(deviceId, action) {
+  db.prepare('INSERT INTO device_commands (device_id, action) VALUES (?,?)').run(deviceId, action);
+}
+
 
 // ---------- TVs ----------
 app.get('/api/devices', requireAuth, (req, res) => res.json({ devices: listDevices() }));
@@ -208,7 +235,7 @@ app.post('/api/devices', requireAuth, (req, res) => {
   const orient = req.body?.orientation === 'vertical' ? 'vertical' : 'horizontal';
   const notas = String(req.body?.notes || '').trim();
   if (!nome) return bad(res, 'Dê um nome para a TV.');
-  const token = crypto.randomBytes(24).toString('base64url'); // link único e difícil de adivinhar
+    const token = gerarTokenTV(); // código curto, fácil de digitar na TV
   const info = db.prepare('INSERT INTO devices (name,location,orientation,notes,token) VALUES (?,?,?,?,?)')
     .run(nome, local, orient, notas, token);
   res.json({ device: db.prepare('SELECT * FROM devices WHERE id=?').get(info.lastInsertRowid) });
@@ -233,7 +260,7 @@ app.delete('/api/devices/:id', requireAuth, (req, res) => {
 
 // Revogar o link antigo e gerar outro (ex.: se vazar).
 app.post('/api/devices/:id/token', requireAuth, (req, res) => {
-    const token = gerarTokenTV();
+      const token = gerarTokenTV();
   const info = db.prepare('UPDATE devices SET token=? WHERE id=?').run(token, req.params.id);
   if (!info.changes) return bad(res, 'TV não encontrada.', 404);
   res.json({ token });
@@ -244,7 +271,7 @@ app.get('/api/devices/:id/control', requireAuth, async (req, res) => {
   const d = db.prepare('SELECT * FROM devices WHERE id=?').get(req.params.id);
   if (!d) return bad(res, 'TV não encontrada.', 404);
   const link = `${req.protocol}://${req.get('host')}/tv/${d.token}`;
-    const hostHint = `${req.get('host')}/tv/${fmtToken(d.token)}`;
+      const hostHint = `${req.get('host')}/tv/${fmtToken(d.token)}`;
   const qr = await QRCode.toDataURL(link, { width: 360, margin: 1, color: { dark: '#1C1B16', light: '#FFFCF4' } });
   const hb = db.prepare('SELECT * FROM device_heartbeats WHERE device_id=?').get(d.id) || null;
   const cm = hb?.current_media_id ? db.prepare('SELECT name FROM media WHERE id=?').get(hb.current_media_id) : null;
@@ -253,6 +280,7 @@ app.get('/api/devices/:id/control', requireAuth, async (req, res) => {
   const fila = db.prepare('SELECT id, playlist_id FROM play_queue WHERE device_id=? ORDER BY position, id').all(d.id);
   res.json({
     device: d, link, qr, host_hint: hostHint, hb,
+    link, qr, host_hint: hostHint, hb,
     current_media_name: cm?.name || null,
     current_playlist_name: cp?.name || null,
     assignment: a ? playlistFull(a.playlist_id) : null,
@@ -301,6 +329,11 @@ app.post('/api/devices/:id/command', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+function sendCommand(deviceId, action) {
+  db.prepare('INSERT INTO device_commands (device_id, action) VALUES (?,?)').run(deviceId, action);
+}
+const ONLINE_MS = 30000; // TV sem sinal por 30s = offline no painel
+
 // Painel de status geral.
 app.get('/api/status', requireAuth, (req, res) => {
   const agora = Date.now();
@@ -339,12 +372,20 @@ app.get('/api/media', requireAuth, (req, res) => {
 
 app.post('/api/media/upload', requireAuth, upload.single('arquivo'), (req, res) => {
   if (!req.file) return bad(res, 'Escolha um arquivo.');
-  const kind = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-  const nome = (req.body?.nome || '').trim() || path.basename(req.file.originalname, path.extname(req.file.originalname));
-  const info = db.prepare(`INSERT INTO media (kind,name,file_path,mime,size_bytes,duration_seconds)
-                           VALUES (?,?,?,?,?,?)`)
-    .run(kind, nome, `/uploads/${req.file.filename}`, req.file.mimetype, req.file.size, kind === 'image' ? 10 : null);
-  res.json({ media: db.prepare('SELECT * FROM media WHERE id=?').get(info.lastInsertRowid) });
+  try {
+    const kind = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+    const nome = (req.body?.nome || '').trim() || path.basename(req.file.originalname, path.extname(req.file.originalname));
+    // 0 para vídeo = "usa a duração do próprio vídeo" (ninguém exibe esse número)
+    const info = db.prepare(`INSERT INTO media (kind,name,file_path,mime,size_bytes,duration_seconds)
+                             VALUES (?,?,?,?,?,?)`)
+      .run(kind, nome, `/uploads/${req.file.filename}`, req.file.mimetype, req.file.size,
+           kind === 'image' ? 10 : 0);
+    res.json({ media: db.prepare('SELECT * FROM media WHERE id=?').get(info.lastInsertRowid) });
+  } catch (e) {
+    try { fs.unlinkSync(req.file.path); } catch {} // registro falhou: não deixa arquivo órfão
+    console.error('Falha ao registrar mídia no banco:', e.message);
+    bad(res, 'O arquivo chegou, mas o registro falhou. Tente de novo.', 500);
+  }
 });
 
 app.post('/api/media/text', requireAuth, (req, res) => {
@@ -363,7 +404,7 @@ app.put('/api/media/:id', requireAuth, (req, res) => {
   const m = db.prepare('SELECT * FROM media WHERE id=?').get(req.params.id);
   if (!m) return bad(res, 'Mídia não encontrada.', 404);
   const nome = String(req.body?.name ?? m.name).trim() || m.name;
-  const dur = req.body?.duration_seconds === null ? null
+    const dur = m.kind === 'video' ? 0
     : Math.min(7200, Math.max(1, Number(req.body?.duration_seconds ?? m.duration_seconds) || 10));
   db.prepare(`UPDATE media SET name=?, title=?, body=?, bg_color=?, duration_seconds=? WHERE id=?`).run(
     nome,
@@ -379,13 +420,15 @@ app.delete('/api/media/:id', requireAuth, (req, res) => {
   const m = db.prepare('SELECT * FROM media WHERE id=?').get(req.params.id);
   if (!m) return bad(res, 'Mídia não encontrada.', 404);
   db.prepare('DELETE FROM media WHERE id=?').run(m.id);
+    // playlists ocultas que ficaram vazias (só tinham essa mídia) somem junto
+  db.prepare("DELETE FROM playlists WHERE hidden=1 AND id NOT IN (SELECT DISTINCT playlist_id FROM playlist_items)").run();
   if (m.file_path) { try { fs.unlinkSync(path.join(__dirname, m.file_path)); } catch {} }
   res.json({ ok: true });
 });
 
 
 // Exibir uma mídia direto em uma TV, sem montar playlist antes:
-// cria (ou reaproveita) uma playlist só com essa mídia e a coloca no ar.
+// cria (ou reaproveita) uma playlist OCULTA só com essa mídia e a põe no ar.
 app.post('/api/media/:id/display', requireAuth, (req, res) => {
   const m = db.prepare('SELECT * FROM media WHERE id=?').get(req.params.id);
   if (!m) return bad(res, 'Mídia não encontrada.', 404);
@@ -393,15 +436,18 @@ app.post('/api/media/:id/display', requireAuth, (req, res) => {
   if (!d) return bad(res, 'TV não encontrada.', 404);
 
   const info = db.transaction(() => {
-    // Reaproveita se já existe uma playlist de 1 item só com esta mídia e este nome
+    // Reaproveita apenas playlists OCULTAS de 1 item com essa mídia
     let plId = null;
-    const candidatas = db.prepare('SELECT id FROM playlists WHERE name = ?').all(m.name);
+    const candidatas = db.prepare('SELECT id FROM playlists WHERE name = ? AND hidden = 1').all(m.name);
     for (const c of candidatas) {
       const itens = db.prepare('SELECT media_id FROM playlist_items WHERE playlist_id=?').all(c.id);
       if (itens.length === 1 && itens[0].media_id === m.id) { plId = c.id; break; }
     }
-    if (!plId) {
-      const pl = db.prepare('INSERT INTO playlists (name) VALUES (?)').run(m.name);
+    if (plId) {
+      // mantém o nome da playlist igual ao nome ATUAL da mídia (pode ter sido renomeada)
+      db.prepare('UPDATE playlists SET name=? WHERE id=?').run(m.name, plId);
+    } else {
+      const pl = db.prepare('INSERT INTO playlists (name, hidden) VALUES (?, 1)').run(m.name);
       plId = pl.lastInsertRowid;
       db.prepare('INSERT INTO playlist_items (playlist_id, media_id, position, duration_seconds) VALUES (?,?,0,NULL)')
         .run(plId, m.id);
@@ -494,7 +540,7 @@ app.put('/api/playlists/:id/items', requireAuth, (req, res) => {
 
 // ---------- endpoint da TV: heartbeat + estado + comandos, numa tacada só ----------
 app.post('/api/player/state', (req, res) => {
-    const d = acharTVporToken(String(req.body?.token || ''));
+      const d = acharTVporToken(String(req.body?.token || ''));
   if (!d) return bad(res, 'Link de TV inválido.', 404);
   const { current_media_id = null, current_playlist_id = null, paused = false, finished_queue_entry = null } = req.body || {};
 
@@ -515,6 +561,9 @@ app.post('/api/player/state', (req, res) => {
   const comandos = db.prepare(`SELECT id, action FROM device_commands
     WHERE device_id=? AND delivered_at IS NULL ORDER BY id`).all(d.id);
   if (comandos.length) db.prepare('UPDATE device_commands SET delivered_at=datetime(\'now\') WHERE device_id=? AND delivered_at IS NULL').run(d.id);
+
+    db.prepare(`DELETE FROM device_commands WHERE device_id=? AND delivered_at IS NOT NULL
+              AND created_at < datetime('now','-1 day')`).run(d.id);
 
   const a = db.prepare('SELECT playlist_id FROM device_assignments WHERE device_id=? ORDER BY id DESC LIMIT 1').get(d.id);
   const fila = db.prepare('SELECT id, playlist_id FROM play_queue WHERE device_id=? ORDER BY position, id').all(d.id);
