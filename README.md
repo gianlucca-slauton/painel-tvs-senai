@@ -1,6 +1,7 @@
-# 📺 Painel de TV SENAI — Sistema de Gerenciamento de Conteúdo (CMS)
+# 📺 Painel de TV SENAI — Sistema de Gerenciamento de Conteúdo
 
-> Sistema web desenvolvido para administrar e transmitir conteúdos dinâmicos (avisos, horários, eventos e comunicados) nas TVs das unidades do **SENAI**.
+>Sistema full-stack de digital signage para monitores: playlists de mídias, controle remoto em tempo real e exibição em tela cheia via URL;
+Versão em servidor local.
 
 ---
 
