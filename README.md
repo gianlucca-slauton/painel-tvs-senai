@@ -12,7 +12,7 @@ Este projeto consiste em uma plataforma de gerenciamento centralizado para os pa
 ### 🎯 Principais Funcionalidades
 - **Painel Administrativo:** Interface intuitiva para publicação e agendamento de conteúdos (banners, vídeos, avisos).
 - **Gestão de Telas/TVs:** Vinculação e organização das TVs por bloco, sala ou setor da unidade.
-- **Modo Exibição (Player):** Interface otimizada e responsiva para rodar diretamente nas Smart TVs ou dispositivos acoplados (Chromecast, Raspberry Pi, etc.).
+- **Modo Exibição (Player):** Interface otimizada e responsiva para rodar diretamente em Smart TVs ou dispositivo com browser.
 - **Atualização em Tempo Real:** Atualizações instantâneas de comunicados e alertas urgentes sem necessidade de reiniciar as TVs.
 
 ---
