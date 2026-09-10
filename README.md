@@ -18,21 +18,16 @@ Este projeto consiste em uma plataforma de gerenciamento centralizado para os pa
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Front-end:** HTML5, CSS3, JavaScript / React (ou o framework utilizado)
-- **Back-end:** Node.js / Python / PHP (ou a linguagem do servidor)
-- **Banco de Dados:** PostgreSQL / MySQL / MongoDB
-- **Autenticação:** JWT / Sessions para controle de acesso dos administradores
+- **Front-end:** HTML5, CSS3
+- **Back-end:** Node.js, JavaScript
+- **Banco de Dados:** SQLite
 
 ---
 
-## 🚀 Como Executar o Projeto
+```bash
+git clone https://github.com/gianlucca-slauton/painel-tvs-senai.git
+```
 
-### Pré-requisitos
-- Node.js / Python / Servidor Web instalado
-- Banco de Dados configurado
-
-### Passo a Passo
-
-1. **Clone o repositório:**
-   ```bash
-   git clone [https://github.com/seu-usuario/painel-tv-senai.git](https://github.com/seu-usuario/painel-tv-senai.git)
+Anderson França & Gianlucca Lauton sob a orientação do Prof. Gabriel Eduardo
+<br>
+SENAI - Mooca. Todos os direitos reservados © 2026.
